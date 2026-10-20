@@ -102,9 +102,9 @@
         </div>
     </div>
 
-    <!-- Main Game Container - dynamically sized to fit remaining viewport -->
+    <!-- Main Game Container -->
     <div class="relative w-full max-w-[800px] flex-1 min-h-0 flex items-center justify-center my-1">
-        <canvas id="gameCanvas" class="max-w-full max-h-full aspect-[4/3] block"></canvas>
+        <canvas id="gameCanvas" class="max-w-full max-h-full aspect-[4/3] block cursor-pointer"></canvas>
 
         <!-- Start Overlay -->
         <div id="startOverlay" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center rounded-xl p-4 text-center z-20">
@@ -112,9 +112,9 @@
             <p class="text-slate-300 text-sm md:text-base mb-4 max-w-md">Retro Neon Breakout Arcade experience with multi-balls, power-ups, particle FX, and dynamic sound!</p>
             
             <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-800 mb-6 max-w-xs text-left text-xs md:text-sm text-slate-400 space-y-1.5">
-                <p>🖱️ <strong class="text-white">Mouse / Touch:</strong> Drag Paddle</p>
+                <p>🔒 <strong class="text-white">Mouse:</strong> Locked inside window during game</p>
                 <p>⌨️ <strong class="text-white">Keys:</strong> Arrow Left/Right or A/D</p>
-                <p>⏸️ <strong class="text-white">Pause:</strong> Press 'P' or ESC</p>
+                <p>⏸️ <strong class="text-white">Pause / Unlock:</strong> Press 'ESC' or 'P'</p>
             </div>
 
             <button id="startGameBtn" class="arcade-btn px-6 py-3 md:px-8 md:py-4 text-white font-pixel text-sm md:text-base rounded-xl uppercase tracking-widest cursor-pointer">
@@ -125,6 +125,7 @@
         <!-- Pause Overlay -->
         <div id="pauseOverlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center rounded-xl z-20 hidden">
             <h2 class="text-3xl md:text-4xl font-pixel text-cyan-400 neon-text-blue mb-6">GAME PAUSED</h2>
+            <p class="text-slate-400 text-xs md:text-sm mb-4">Click RESUME or click canvas to continue with Pointer Lock</p>
             <button id="resumeBtn" class="arcade-btn px-8 py-3 text-white font-pixel rounded-lg text-xs md:text-sm uppercase tracking-wider mb-4 cursor-pointer">
                 RESUME
             </button>
@@ -152,7 +153,7 @@
 
     <!-- Footer Controls Bar -->
     <div class="text-[10px] md:text-xs text-slate-500 font-pixel text-center shrink-0">
-        USE MOUSE, TOUCH, OR ARROW KEYS TO CONTROL PADDLE
+        POINTER LOCK ENABLED • PRESS ESC TO UNLOCK / PAUSE
     </div>
 
     <script>
@@ -325,13 +326,13 @@
         let particles = [];
         let powerUps = [];
 
-        // Colors per row / durability
+        // Colors per row
         const BRICK_COLORS = [
-            { bg: '#ff007f', glow: 'rgba(255, 0, 127, 0.6)' }, // Neon Pink
-            { bg: '#ff7700', glow: 'rgba(255, 119, 0, 0.6)' }, // Neon Orange
-            { bg: '#ffdd00', glow: 'rgba(255, 221, 0, 0.6)' }, // Neon Yellow
-            { bg: '#00ff66', glow: 'rgba(0, 255, 102, 0.6)' }, // Neon Green
-            { bg: '#00f3ff', glow: 'rgba(0, 243, 255, 0.6)' }  // Neon Cyan
+            { bg: '#ff007f', glow: 'rgba(255, 0, 127, 0.6)' },
+            { bg: '#ff7700', glow: 'rgba(255, 119, 0, 0.6)' },
+            { bg: '#ffdd00', glow: 'rgba(255, 221, 0, 0.6)' },
+            { bg: '#00ff66', glow: 'rgba(0, 255, 102, 0.6)' },
+            { bg: '#00f3ff', glow: 'rgba(0, 243, 255, 0.6)' }
         ];
 
         // Power-Up types definition
@@ -342,9 +343,40 @@
             FIRE:   { color: '#ff5500', text: 'F', label: 'FIREBALL' }
         };
 
-        // --- Cursor Management ---
+        // --- Pointer Lock API Management ---
+        function requestLock() {
+            if (document.pointerLockElement !== canvas) {
+                canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+                if (canvas.requestPointerLock) {
+                    canvas.requestPointerLock();
+                }
+            }
+        }
+
+        function exitLock() {
+            if (document.pointerLockElement === canvas) {
+                document.exitPointerLock = document.exitPointerLock || document.mozExitPointerLock;
+                if (document.exitPointerLock) {
+                    document.exitPointerLock();
+                }
+            }
+        }
+
+        // Auto pause when pointer lock is released during play (e.g., ESC key pressed)
+        document.addEventListener('pointerlockchange', onPointerLockChange);
+        document.addEventListener('mozpointerlockchange', onPointerLockChange);
+
+        function onPointerLockChange() {
+            const isLocked = (document.pointerLockElement === canvas || document.mozPointerLockElement === canvas);
+            if (!isLocked && gameState === 'PLAYING') {
+                pauseGame();
+            }
+            updateCursorVisibility();
+        }
+
         function updateCursorVisibility() {
-            if (gameState === 'PLAYING') {
+            const isLocked = (document.pointerLockElement === canvas || document.mozPointerLockElement === canvas);
+            if (gameState === 'PLAYING' && isLocked) {
                 canvas.classList.add('hide-cursor');
             } else {
                 canvas.classList.remove('hide-cursor');
@@ -431,12 +463,16 @@
             });
         }
 
-        // --- User Controls Setup ---
+        // --- User Controls & Event Listeners ---
         window.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true;
             if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true;
             if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
-                if (gameState === 'PLAYING' || gameState === 'PAUSED') togglePause();
+                if (gameState === 'PLAYING') {
+                    pauseGame();
+                } else if (gameState === 'PAUSED') {
+                    resumeGame();
+                }
             }
         });
 
@@ -445,13 +481,31 @@
             if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
         });
 
-        // Mouse Controls
-        canvas.addEventListener('mousemove', (e) => {
+        // Mouse Movement (Pointer Lock relative movement + standard fallback)
+        document.addEventListener('mousemove', (e) => {
             if (gameState !== 'PLAYING') return;
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = (e.clientX - rect.left) * (GAME_WIDTH / rect.width);
-            paddle.x = mouseX - paddle.width / 2;
+
+            const isLocked = (document.pointerLockElement === canvas || document.mozPointerLockElement === canvas);
+
+            if (isLocked) {
+                // Relative movement using movementX to keep mouse inside canvas boundaries
+                const movementX = e.movementX || e.mozMovementX || 0;
+                const scale = GAME_WIDTH / canvas.getBoundingClientRect().width;
+                paddle.x += movementX * scale;
+            } else {
+                // Fallback absolute position
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = (e.clientX - rect.left) * (GAME_WIDTH / rect.width);
+                paddle.x = mouseX - paddle.width / 2;
+            }
             clampPaddle();
+        });
+
+        // Click canvas during play to re-engage pointer lock
+        canvas.addEventListener('click', () => {
+            if (gameState === 'PLAYING') {
+                requestLock();
+            }
         });
 
         // Touch Controls
@@ -469,7 +523,7 @@
             if (paddle.x + paddle.width > GAME_WIDTH) paddle.x = GAME_WIDTH - paddle.width;
         }
 
-        // --- Game Initialization & Reset ---
+        // --- Game Initialization & State Management ---
         function initGame() {
             score = 0;
             lives = 3;
@@ -504,20 +558,27 @@
             }
         }
 
-        function togglePause() {
+        function pauseGame() {
             if (gameState === 'PLAYING') {
                 gameState = 'PAUSED';
-                updateCursorVisibility();
+                exitLock();
                 pauseOverlay.classList.remove('hidden');
-            } else if (gameState === 'PAUSED') {
-                gameState = 'PLAYING';
                 updateCursorVisibility();
+            }
+        }
+
+        function resumeGame() {
+            if (gameState === 'PAUSED') {
+                gameState = 'PLAYING';
                 pauseOverlay.classList.add('hidden');
+                requestLock();
+                updateCursorVisibility();
             }
         }
 
         function handleGameOver() {
             gameState = 'GAME_OVER';
+            exitLock();
             audio.playGameOver();
             finalScoreVal.textContent = score;
 
@@ -643,6 +704,7 @@
 
             if (bricks.length === 0) {
                 gameState = 'LEVEL_WIN';
+                exitLock();
                 audio.playLevelWin();
                 updateCursorVisibility();
                 levelWinOverlay.classList.remove('hidden');
@@ -778,22 +840,24 @@
             requestAnimationFrame(loop);
         }
 
-        // --- Event Listeners Setup ---
+        // --- Event Handlers for Overlay Buttons ---
         startGameBtn.addEventListener('click', () => {
             audio.init();
             startOverlay.classList.add('hidden');
             initGame();
             gameState = 'PLAYING';
+            requestLock();
             updateCursorVisibility();
         });
 
-        pauseBtn.addEventListener('click', () => togglePause());
-        resumeBtn.addEventListener('click', () => togglePause());
+        pauseBtn.addEventListener('click', () => pauseGame());
+        resumeBtn.addEventListener('click', () => resumeGame());
 
         restartBtn.addEventListener('click', () => {
             gameOverOverlay.classList.add('hidden');
             initGame();
             gameState = 'PLAYING';
+            requestLock();
             updateCursorVisibility();
         });
 
@@ -802,6 +866,7 @@
             level++;
             resetLevel();
             gameState = 'PLAYING';
+            requestLock();
             updateCursorVisibility();
         });
 
